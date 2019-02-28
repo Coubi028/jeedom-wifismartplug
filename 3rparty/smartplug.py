@@ -1,46 +1,46 @@
-#!/usr/bin/env python
-# 
+#!/usr/bin/env python2
+#
 # TP-Link Wi-Fi Smart Plug Protocol Client
 # For use with TP-Link HS-100 or HS-110
-#  
+#
 # by Lubomir Stroetmann
-# Copyright 2016 softScheck GmbH 
-# 
+# Copyright 2016 softScheck GmbH
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #      http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# 
 #
+
 import socket
 import argparse
 import json
-import time
 import datetime
+from struct import pack
 
-version = 0.1
+version = 0.2
 
-# Check if IP is valid
-def validIP(ip):
+# Check if hostname is valid
+def validHostname(hostname):
 	try:
-		socket.inet_pton(socket.AF_INET,ip)
+		socket.gethostbyname(hostname)
 	except socket.error:
-		parser.error("Invalid IP Address.")
-	return ip
+		parser.error("Invalid hostname.")
+	return hostname
 
 # get month and year for dailyConsumption
 date = datetime.datetime.now()
 month = date.month
 year = date.year
 dailyconsumptionCommand = str('{"emeter":{"get_daystat":{"month":') + str(month) + str(',"year":') +str(year) +str("}}}")
-
+	
 # Predefined Smart Plug Commands
 # For a full list of commands, consult tplink_commands.txt
 commands = {'info'                 : '{"system":{"get_sysinfo":{}}}',
@@ -51,6 +51,7 @@ commands = {'info'                 : '{"system":{"get_sysinfo":{}}}',
 			'wlanscan'             : '{"netif":{"get_scaninfo":{"refresh":0}}}',
 			'time'                 : '{"time":{"get_time":{}}}',
 			'schedule'             : '{"schedule":{"get_rules":{}}}',
+			'energy'               : '{"emeter":{"get_realtime":{}}}',
             'macaddress'           : '{"system":{"get_sysinfo":{}}}',
 			'countdown'            : '{"count_down":{"get_rules":{}}}',
 			'antitheft'            : '{"anti_theft":{"get_rules":{}}}',
@@ -60,38 +61,36 @@ commands = {'info'                 : '{"system":{"get_sysinfo":{}}}',
             'nightModeState'       : '{"system":{"get_sysinfo":{}}}',
             'nightModeOn'          : '{"system":{"set_led_off":{"off":1}}}',
             'nightModeOff'         : '{"system":{"set_led_off":{"off":0}}}',
-            'realtimeVoltage'      : '{"emeter":{"get_realtime":{}}}',
             'EMeterVGain'          : '{"emeter":{"get_vgain_igain":{}}}',
             'currentRunTime'       : '{"system":{"get_sysinfo":{}}}',
             'currentPower'         : '{"emeter":{"get_realtime":{}}}',
-            'voltage'              : '{"emeter":{"get_realtime":{}}}',
+			'realtimePower'		   : '{"emeter":{"get_realtime":{}}}',
+            'realtimeVoltage'      : '{"emeter":{"get_realtime":{}}}',
             'dailyConsumption'     : dailyconsumptionCommand,
             'gettime'              : '{"emeter":{"get_daystat":{"month":5,"year":2017}}}',
             'currentRunTimeHour'   : '{"system":{"get_sysinfo":{}}}',
             'resetcounter'         : '{"emeter":{"erase_emeter_stat":null}}'
 }
 
-
 # Encryption and Decryption of TP-Link Smart Home Protocol
 # XOR Autokey Cipher with starting key = 171
 def encrypt(string):
 	key = 171
-	result = "\0\0\0\0"
-	for i in string: 
+	result = pack('>I', len(string))
+	for i in string:
 		a = key ^ ord(i)
 		key = a
 		result += chr(a)
 	return result
 
 def decrypt(string):
-	key = 171 
+	key = 171
 	result = ""
-	for i in string: 
+	for i in string:
 		a = key ^ ord(i)
-		key = ord(i) 
+		key = ord(i)
 		result += chr(a)
 	return result
-	
 
 #01/04/2017 parse relay state
 def parsecurrentRunTime(string):
@@ -116,24 +115,50 @@ def decoupe(seconde):
     if(seconde <10) :
         seconde = "0"+ str(seconde)
     return (day,heure,minute,seconde)
-
-
+	
 # get daily consumption from get_daystat command
 def dailyConsumption(string):
+	#print "dailyConsumption: ", string
 	result = ""
 	jsonObj = json.loads(string)
 	for x in jsonObj['emeter']['get_daystat']['day_list']:
-		result = x['energy']
+		if 'energy' in x:
+			result = x['energy']
+		elif 'energy_wh' in x:
+			result = x['energy_wh']/1000.0
+	return result
+	
+def realtimeVoltage(string):
+	#print "realtimeVoltage: ", string
+	result = ""
+	jsonObj = json.loads(string)
+	for x in jsonObj['emeter']['get_realtime']:
+		print "x: ", x
+		if x == 'voltage':
+			result = jsonObj['emeter']['get_realtime']['voltage']
+		elif x == 'voltage_mv':
+			result = jsonObj['emeter']['get_realtime']['voltage_mv']/1000.0
 	return result
 
-
+def realtimePower(string):
+	#print "realtimePower: ", string
+	result = ""
+	jsonObj = json.loads(string)
+	for x in jsonObj['emeter']['get_realtime']:
+		if x == 'power':
+			result = jsonObj['emeter']['get_realtime']['power']
+		elif x == 'power_mw':
+			result = jsonObj['emeter']['get_realtime']['power_mw']/1000.0
+	return result
+	
 # Parse commandline arguments
 parser = argparse.ArgumentParser(description="TP-Link Wi-Fi Smart Plug Client v" + str(version))
-parser.add_argument("-t", "--target", metavar="<ip>", required=True, help="Target IP Address", type=validIP)
+parser.add_argument("-t", "--target", metavar="<hostname>", required=True, help="Target hostname or IP address", type=validHostname)
 group = parser.add_mutually_exclusive_group(required=True)
-group.add_argument("-c", "--command", metavar="<command>", help="Preset command to send. Choices are: "+", ".join(commands), choices=commands) 
+group.add_argument("-c", "--command", metavar="<command>", help="Preset command to send. Choices are: "+", ".join(commands), choices=commands)
 group.add_argument("-j", "--json", metavar="<JSON string>", help="Full JSON string of command to send")
 args = parser.parse_args()
+
 
 # Set target IP, port and command to send
 ip = args.target
@@ -145,7 +170,7 @@ else:
 
 resultat = ''
 
-# Send command and receive reply 
+# Send command and receive reply
 try:
 	sock_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	sock_tcp.connect((ip, port))
@@ -153,6 +178,9 @@ try:
 	data = sock_tcp.recv(2048)
 	sock_tcp.close()
 
+	#print "Sent:     ", cmd
+	#print "Received: ", decrypt(data[4:])
+	
 	if args.command  == "relay_state":
 		print json.loads(decrypt(data[4:]))['system']['get_sysinfo']['relay_state']
 	elif args.command  == "currentRunTime":
@@ -162,8 +190,10 @@ try:
 		print "%s:%s:%s:%s" % decoupe(json.loads(decrypt(data[4:]))['system']['get_sysinfo']['on_time'])
 	elif args.command  == "currentPower":
 		print json.loads(decrypt(data[4:]))['emeter']['get_realtime']['power']
-	elif args.command  == "voltage":
-		print json.loads(decrypt(data[4:]))['emeter']['get_realtime']['voltage']
+	elif args.command  == "realtimePower":
+		print realtimePower(decrypt(data[4:]))
+	elif args.command  == "realtimeVoltage":
+		print realtimeVoltage(decrypt(data[4:]))
 	elif args.command  == "dailyConsumption":
 		print dailyConsumption(decrypt(data[4:]))
 	elif args.command  == "macaddress":
@@ -186,9 +216,5 @@ try:
 		print decrypt(data[4:])
 
 #01/04/2017 add parse result info for get relay stat directly 0 off 1 on
-
-	
 except socket.error:
 	quit("Cound not connect to host " + ip + ":" + str(port))
-
-
