@@ -173,44 +173,35 @@ class wifismartplug extends eqLogic {
                   }
               }
               
-              /* power and voltage from */
+              /* voltage from */
               $command = '/usr/bin/python ' .dirname(__FILE__).'/../../3rparty/smartplug.py  -t ' . $ipsmartplug . ' -c realtimeVoltage';
-              $result=trim(shell_exec($command));
+              $voltage=trim(shell_exec($command));
               log::add('wifismartplug','debug','retour [realvoltage]');
               log::add('wifismartplug','debug',$command);
-              log::add('wifismartplug','debug',$result);
-              
-              /* decode reponse info */
-              $jsoninfo = json_decode($result,true);
-              $voltage =$jsoninfo['emeter']['get_realtime']['voltage'];
-              $power =$jsoninfo['emeter']['get_realtime']['power'];
-              
-              log::add('wifismartplug','debug', 'voltage : '.$voltage );
-              log::add('wifismartplug','debug', 'power : '.$power );
-
-              
-              /*--set current power --*/
-              $statecmd = wifismartplugCmd::byEqLogicIdAndLogicalId($this->getId(),'currentPower');
-              if (is_object($statecmd)) {
-                  if ($statecmd->execCmd() == null || $statecmd->execCmd() != $power) {
-                      $changed = true;
-                      $statecmd->setCollectDate('');
-                      $statecmd->event($power);
-                  }
-              }
-
-              /*--set voltage--*/
-
+              log::add('wifismartplug','debug',$voltage);
               $statecmd = wifismartplugCmd::byEqLogicIdAndLogicalId($this->getId(),'voltage');
               if (is_object($statecmd)) {
-                  if ($statecmd->execCmd() == null || $statecmd->execCmd() != $voltage) {
+                  if ($statecmd->execCmd() == null || $statecmd->execCmd() != $retourcommand) {
                       $changed = true;
                       $statecmd->setCollectDate('');
                       $statecmd->event($voltage);
                   }
               }
-              
-              
+			  
+              /* power from */
+              $command = '/usr/bin/python ' .dirname(__FILE__).'/../../3rparty/smartplug.py  -t ' . $ipsmartplug . ' -c realtimePower';
+              $power=trim(shell_exec($command));
+              log::add('wifismartplug','debug','retour [realvoltage]');
+              log::add('wifismartplug','debug',$command);
+              log::add('wifismartplug','debug',$power);
+              $statecmd = wifismartplugCmd::byEqLogicIdAndLogicalId($this->getId(),'currentPower');
+              if (is_object($statecmd)) {
+                  if ($statecmd->execCmd() == null || $statecmd->execCmd() != $retourcommand) {
+                      $changed = true;
+                      $statecmd->setCollectDate('');
+                      $statecmd->event($power);
+                  }
+              }
           }
           
           
@@ -599,10 +590,11 @@ class wifismartplugCmd extends cmd {
          /* set  : on */
         if ($action == 'on') {
             $command = '/usr/bin/python ' .dirname(__FILE__).'/../../3rparty/smartplug.py  -t '  . $ipsmartplug . ' -c on';
-           $result=trim(shell_exec($command));
+			$result=trim(shell_exec($command));
             log::add('wifismartplug','debug','action on');
             log::add('wifismartplug','debug',$command);
             log::add('wifismartplug','debug',$result);
+			sleep(5);
             $eqLogic->cron($eqLogic->getId());
         }
         
@@ -613,6 +605,7 @@ class wifismartplugCmd extends cmd {
             log::add('wifismartplug','debug','action off');
             log::add('wifismartplug','debug',$command);
             log::add('wifismartplug','debug',$result);
+			sleep(5);
             $eqLogic->cron($eqLogic->getId());
         }
         
